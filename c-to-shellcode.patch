@@ -1,0 +1,64 @@
+diff --git a/c-to-shellcode.py b/c-to-shellcode.py
+index c9f3dc3..244cc94 100644
+--- a/c-to-shellcode.py
++++ b/c-to-shellcode.py
+@@ -3,7 +3,10 @@
+ # Name  : c-to-shellcode.py
+ # Author: Print3M
+ # GitHub: https://github.com/Print3M
++import os
++from pathlib import Path
+ import subprocess
++import sys
+ 
+ 
+ def args(arr: list[str]):
+@@ -34,19 +37,29 @@ BIN_PAYLOAD_CFLAGS = args(
+ )
+ 
+ if __name__ == "__main__":
++    input_file = Path(sys.argv[1]).absolute()
++    ORIG_CWD = Path(os.getcwd())
++    ROOT = Path(__file__).parent
++    os.chdir(ROOT)
++    output_dir = input_file.parent / 'bin'
++    output_file_o = output_dir / f'{input_file.name.rsplit(".")[0]}.o'
++    output_file_bin = output_dir / f'{input_file.name.rsplit(".")[0]}.bin'
++    output_file_exe = output_dir / f'{input_file.name.rsplit(".")[0]}.bin'
++    output_file_loader = output_dir / f'loader.exe'
++
+     # Compile payload C code to object file
+-    run_cmd(f"{CC} -c payload.c -o bin/payload.o  {BIN_PAYLOAD_CFLAGS}")
++    run_cmd(f"{CC} -c {input_file} -o {output_file_o} {BIN_PAYLOAD_CFLAGS}")
+ 
+     # Produce flat binary with payload
+     run_cmd(
+-        f"ld -T assets/linker.ld bin/payload.o -o bin/payload.bin"
++        f"ld -T assets/linker.ld {output_file_o} -o {output_file_bin}"
+     )
+ 
+     # Produce PE .exe with payload (WinAPI included)
+-    run_cmd(f"{CC} bin/payload.o -o bin/payload.exe {EXE_PAYLOAD_CFLAGS}")
++    run_cmd(f"{CC} {output_file_o} -o {output_file_exe} {EXE_PAYLOAD_CFLAGS}")
+ 
+     # Convert flat binary into C array of bytes
+-    with open("bin/payload.bin", "rb") as f:
++    with open(output_file_bin, "rb") as f:
+         bytes = bytearray(f.read())
+ 
+     size = len(bytes)
+@@ -66,8 +79,11 @@ if __name__ == "__main__":
+         f.write(loader)
+ 
+     # Compile loader
+-    run_cmd(f"{CC} bin/loader.c -o bin/loader.exe")
++    run_cmd(f"{CC} bin/loader.c -o {output_file_loader}")
+ 
+     print("")
+-    print("[+] bin/payload.exe is ready!")
+-    print("[+] bin/loader.exe is ready!")
++    if ORIG_CWD in output_dir.parents:
++        output_file_exe = output_file_exe.relative_to(ORIG_CWD)
++        output_file_loader = output_file_loader.relative_to(ORIG_CWD)
++    print(f"[+] {output_file_exe} is ready!")
++    print(f"[+] {output_file_loader} is ready!")
