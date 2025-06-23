@@ -21,7 +21,11 @@
       : "%rax" /* Clobbered register */                                        \
   );
 
-typedef UINT(WINAPI *WinExecPtr)(LPCSTR lpCmdLine, UINT uCmdShow);
+// typedef UINT(WINAPI *WinExecPtr)(LPCSTR lpCmdLine, UINT uCmdShow);
+
+typedef HMODULE(WINAPI *LoadLibraryA_t)(IN LPCSTR lpLibFileName);
+typedef FARPROC(WINAPI *GetProcAddress_t)(IN HMODULE hModule, IN LPCSTR lpProcName);
+
 
 FUNC int my_wcscmp(const wchar_t *s1, const wchar_t *s2) {
   while (*s1 != L'\0' && *s2 != L'\0') {
@@ -86,58 +90,84 @@ FUNC PPEB GetPEB(void) {
   return (PPEB)value;
 }
 
-int start(void) {
-  PPEB peb = GetPEB();
-
-  wchar_t dll_name[] = {
-      L'C', L':', L'\\', L'W', L'i', L'n', L'd', L'o', L'w',  L's', L'\\',
-      L'S', L'y', L's',  L't', L'e', L'm', L'3', L'2', L'\\', L'K', L'E',
-      L'R', L'N', L'E',  L'L', L'3', L'2', L'.', L'D', L'L',  L'L', L'\0',
-  };
-
-  // Get address of kernel32.dll
-  PLDR_DATA_TABLE_ENTRY kernel32_ldr = GetDllLdr(peb->Ldr, dll_name);
-  PIMAGE_DOS_HEADER kernel32 = (PIMAGE_DOS_HEADER)kernel32_ldr->DllBase;
-
-  // Get address of PE headers
-  PVOID pe_hdrs = (PVOID)((PVOID)kernel32 + kernel32->e_lfanew);
+FUNC void FindFunc(PVOID library_base, const char *name, void **func_ptr)
+{
+  // Get PE headers
+  PVOID pe_hdrs = (PVOID)(library_base + ((PIMAGE_DOS_HEADER)library_base)->e_lfanew);
 
   // Get Export Address Table RVA
   DWORD eat_rva = *(PDWORD)(pe_hdrs + 0x88);
 
   // Get address of Export Address Table
-  PIMAGE_EXPORT_DIRECTORY eat =
-      (PIMAGE_EXPORT_DIRECTORY)((PVOID)kernel32 + eat_rva);
+  PIMAGE_EXPORT_DIRECTORY eat = (PIMAGE_EXPORT_DIRECTORY)(library_base + eat_rva);
 
   // Get address of function names table
-  PDWORD name_rva = (PDWORD)((PVOID)kernel32 + eat->AddressOfNames);
+  PDWORD name_rva = (PDWORD)(library_base + eat->AddressOfNames);
 
-  // Get function name
-  char func_name[] = {'W', 'i', 'n', 'E', 'x', 'e', 'c', '\0'};
-  uint64_t i = 0;
-
-  do {
-    char *tmp = (char *)((PVOID)kernel32 + name_rva[i]);
-
-    if (my_strcmp(tmp, func_name) == 0) {
-      break;
+  // Loop over imports
+  int found_offset = -1;
+  for (int i = 0; i < eat->NumberOfNames; i++)
+  {
+    char *tmp = (char *)(library_base + name_rva[i]);
+    if (my_strcmp(tmp, name) == 0) {
+      found_offset = i;
     }
-    i++;
-  } while (true);
+  }
+  if (found_offset == -1)
+  {
+    *(int*)0 = 0; // crash :)
+  }
 
   // Get function ordinal
-  PWORD ordinals = (PWORD)((PVOID)kernel32 + eat->AddressOfNameOrdinals);
-  WORD ordinal = ordinals[i];
+  PWORD ordinals = (PWORD)(library_base + eat->AddressOfNameOrdinals);
+  WORD ordinal = ordinals[found_offset];
 
   // Get function pointer
-  PDWORD func_rvas = (PDWORD)((PVOID)kernel32 + eat->AddressOfFunctions);
+  PDWORD func_rvas = (PDWORD)(library_base + eat->AddressOfFunctions);
   DWORD func_rva = func_rvas[ordinal];
-  WinExecPtr winExecPtr = (WinExecPtr)((PVOID)kernel32 + func_rva);
+  *func_ptr = (library_base + func_rva);
+}
 
-  // Run WinAPI function
-  char path[] = {'c', 'a', 'l', 'c', '.', 'e', 'x', 'e', '\0'};
-  ALIGN_STACK();
-  winExecPtr(path, SW_SHOWNORMAL);
+
+int start(void) {
+  PPEB peb = GetPEB();
+
+  wchar_t dll_name[] = L"C:\\Windows\\System32\\KERNEL32.DLL";
+
+  // Get address of kernel32.dll
+  PLDR_DATA_TABLE_ENTRY kernel32_ldr = GetDllLdr(peb->Ldr, dll_name);
+  PVOID kernel32 = kernel32_ldr->DllBase;
+
+  // Find LoadLibraryA
+  const char LoadLibraryA_s[] = "LoadLibraryA";
+  typedef HMODULE(WINAPI *LoadLibraryA_t)(IN LPCSTR lpLibFileName);
+  LoadLibraryA_t LoadLibraryA = NULL;
+  FindFunc(kernel32, LoadLibraryA_s, (void**)&LoadLibraryA);
+  
+  // Find GetProcAddress
+  const char GetProcAddress_s[] = "GetProcAddress";
+  typedef FARPROC(WINAPI *GetProcAddress_t)(IN HMODULE hModule, IN LPCSTR lpProcName);
+  GetProcAddress_t GetProcAddress = NULL;
+  FindFunc(kernel32, GetProcAddress_s, (void**)&GetProcAddress);
+
+  typeof(CreateProcessA) *CreateProcessA = NULL;
+  FindFunc(kernel32, "CreateProcessA", (void**)&CreateProcessA);
+  
+  STARTUPINFOA si = {0};
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi = {0};
+  CreateProcessA(
+    NULL,                // Application name
+    "calc.exe",          // Command line
+    NULL,                // Process handle not inheritable
+    NULL,                // Thread handle not inheritable
+    FALSE,               // Set handle inheritance to FALSE
+    0,                   // No creation flags
+    NULL,                // Use parent's environment block
+    NULL,                // Use parent's starting directory 
+    &si,                 // Pointer to STARTUPINFO structure
+    &pi                  // Pointer to PROCESS_INFORMATION structure
+  );
 
   return 0;
 }
