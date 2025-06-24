@@ -26,3 +26,5 @@ This will produce three files in the `bin` directory:
 - `payload.exe` - Debug version of the loader that is linked as a normal exe and with logging
 - `loader.exe` - An example exe which you can use for testing the loader shellcode. It will load and execute the same shellcode within `payload.bin`.
 
+# Example
+![example](example.png)
