@@ -2,8 +2,7 @@
 
 This is a proof-of-concept shellcode loader that compiles to PIC shellcode. It starts a sacrificial process (notepad.exe) before injecting something bad (ie meterpreter) into it.
 
-It will bypass some/all signature hits for Defender if you are trying to load something sketchy.
-
+This should bypass some signature hits for Defender if you are trying to load something sketchy. It has been proven to be better than a simple VirtualAlloc/CreateThread shellcode loader that laods into the current process
 
 *The build toolchain and some neat PE tricks have been adapted from [c-to-shellcode](https://github.com/Print3M/c-to-shellcode)*
 
