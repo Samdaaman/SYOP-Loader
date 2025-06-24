@@ -1,6 +1,6 @@
 # Start Your Own Process Loader (aka SYOP Loader)
 
-This is a proof-of-concept shellcode loader that starts a sacrificial process (notepad.exe) before injecting something bad (ie meterpreter) into it.
+This is a proof-of-concept shellcode loader that compiles to PIC shellcode. It starts a sacrificial process (notepad.exe) before injecting something bad (ie meterpreter) into it.
 
 ## Setup
 This repo requires a slightly patched version of the `c-to-shellcode` project to compile
