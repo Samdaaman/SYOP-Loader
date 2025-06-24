@@ -2,6 +2,8 @@
 
 This is a proof-of-concept shellcode loader that compiles to PIC shellcode. It starts a sacrificial process (notepad.exe) before injecting something bad (ie meterpreter) into it.
 
+*The build toolchain and some neat PE tricks have been adapted from [c-to-shellcode](https://github.com/Print3M/c-to-shellcode)*
+
 ## Setup
 This repo requires a slightly patched version of the `c-to-shellcode` project to compile
 ```sh
