@@ -5,7 +5,9 @@
             "includePath": [
                 "/usr/share/mingw-w64/include/**"
             ],
-            "defines": [],
+            "defines": [
+                "ENABLE_DEBUG"
+            ],
             "compilerPath": "/usr/bin/x86_64-w64-mingw32-gcc-win32",
             "cStandard": "c11",
             "cppStandard": "c++17",
